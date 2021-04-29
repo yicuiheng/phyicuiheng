@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+# Makefile for VSCode
+.vscode/*.log
+
+# Generated files
+build
