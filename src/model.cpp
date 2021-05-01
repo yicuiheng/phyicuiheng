@@ -22,34 +22,51 @@ model_t::~model_t() {
     glDeleteBuffers(1, &m_index_buffer_id);
 }
 
-model_t model_t::make_cloth() {
-    constexpr int LENGTH = 50;
-    glm::vec3 vertices[LENGTH+1][LENGTH+1] = {{}};
+model_t model_t::make_cloth(rigid_body_t& rigid_body) {
+    constexpr int LENGTH = 10;
+    std::vector<glm::vec3> vertices((LENGTH+1) * (LENGTH+1));
+    rigid_body.mass_points.reserve(vertices.size());
+
     for (int j=0; j<=LENGTH; j++) {
         for (int i=0; i<=LENGTH; i++) {
             float x = 2.0f * (double)i / (double)LENGTH - 1.0f;
             float y = 2.0f * (double)j / (double)LENGTH - 1.0f;
-            vertices[j][i] = glm::vec3(x, y, 0.0f);
+            vertices[j * (LENGTH+1) + i] = glm::vec3(x, y, 0.0f);
+
+            rigid_body.mass_points.emplace_back(vertices[j * (LENGTH+1) + i]);
         }
     }
-    std::vector<glm::vec3> result_vertices((glm::vec3*)vertices, (glm::vec3*)vertices + (LENGTH+1) * (LENGTH+1));
+    rigid_body.mass_points[0].weight = 0.0f;
 
     std::vector<unsigned short> indices;
     indices.reserve(2 * (LENGTH+1) * (LENGTH+1));
     for (int j=0; j<=LENGTH; j++) {
         for (int i=0; i<LENGTH; i++) {
-            indices.push_back((LENGTH+1) * j + i);
-            indices.push_back((LENGTH+1) * j + i + 1);
+            // (i, j) - (i+1, j)
+            int idx1 = (LENGTH+1) * j + i;
+            int idx2 = (LENGTH+1) * j + i + 1;
+            indices.push_back(idx1);
+            indices.push_back(idx2);
+            rigid_body.constraints.emplace_back(rigid_body.mass_points, idx1, idx2);
 
-            indices.push_back((LENGTH+1) * i + j);
-            indices.push_back((LENGTH+1) * i + j + LENGTH + 1);
+            // (i, j) - (i, j+1)
+            idx1 = (LENGTH+1) * i + j;
+            idx2 = (LENGTH+1) * i + j + LENGTH + 1;
+            indices.push_back(idx1);
+            indices.push_back(idx2);
+            rigid_body.constraints.emplace_back(rigid_body.mass_points, idx1, idx2);
         }
     }
     indices.shrink_to_fit();
-    return model_t{std::move(result_vertices), std::move(indices)};
+    model_t model{std::move(vertices), std::move(indices)};
+    return model;
+    // return {model, rigid_body};
 }
 
 void model_t::draw() const {
+	glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
+	glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(glm::vec3), m_vertices.data(), GL_STATIC_DRAW);
+
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);

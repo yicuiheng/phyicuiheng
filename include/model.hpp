@@ -5,8 +5,11 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
+#include <rigid_body.hpp>
+
 struct model_t {
-    static model_t make_cloth();
+    // 返り値の rigit_body_t は model_t の m_vertices の要素への参照を持つ
+    static model_t make_cloth(rigid_body_t& regid_body);
     virtual ~model_t();
 
     void draw() const;
