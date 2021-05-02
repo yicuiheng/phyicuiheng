@@ -18,7 +18,8 @@ struct window_t {
     bool shouldClose() const;
 private:
    GLFWwindow* m_window = nullptr;
-   GLuint m_matrix_id;
+   GLuint m_mvp_matrix_id, m_view_matrix_id, m_model_matrix_id;
+   GLuint m_light_id;
    std::unique_ptr<shader_t> m_shader = nullptr;
    camera_t m_camera;
 };

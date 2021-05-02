@@ -41,8 +41,15 @@ window_t::window_t() {
 
     glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
 
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glDisable(GL_CULL_FACE);
+
     m_shader = std::make_unique<shader_t>(shader_t::load_from_files("resource/VertexShader.glsl", "resource/FragmentShader.glsl"));
-    m_matrix_id = glGetUniformLocation(m_shader->id(), "MVP");
+    m_mvp_matrix_id = glGetUniformLocation(m_shader->id(), "MVP");
+    m_view_matrix_id = glGetUniformLocation(m_shader->id(), "V");
+    m_model_matrix_id = glGetUniformLocation(m_shader->id(), "M");
+    m_light_id = glGetUniformLocation(m_shader->id(), "LightPosition_worldspace");
 }
 
 window_t::~window_t() {
@@ -55,16 +62,21 @@ void window_t::update() {
 }
 
 void window_t::draw(model_t const& model) const {
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	glUseProgram(m_shader->id());
+    glUseProgram(m_shader->id());
 
-    glm::mat4 projection = m_camera.projection();
-    glm::mat4 view = m_camera.view();
+    glm::mat4 projection_matrix = m_camera.projection();
+    glm::mat4 view_matrix = m_camera.view();
     glm::mat4 model_matrix = glm::mat4(1.0f);
-    glm::mat4 MVP = projection * view * model_matrix;
+    glm::mat4 MVP = projection_matrix * view_matrix * model_matrix;
 
-    glUniformMatrix4fv(m_matrix_id, 1, GL_FALSE, &MVP[0][0]);
+    glUniformMatrix4fv(m_mvp_matrix_id, 1, GL_FALSE, &MVP[0][0]);
+    glUniformMatrix4fv(m_model_matrix_id, 1, GL_FALSE, &model_matrix[0][0]);
+    glUniformMatrix4fv(m_view_matrix_id, 1, GL_FALSE, &view_matrix[0][0]);
+
+    glm::vec3 lightPos = glm::vec3(4.0f,4.0f,-1.0f);
+    glUniform3f(m_light_id, lightPos.x, lightPos.y, lightPos.z);
 
     model.draw();
 

@@ -9,9 +9,17 @@ struct rigid_body_t {
     // mass_points の頂点座標を constraints に沿って更新
     void update(float dt) {
         auto predict = mass_points;
-        for (int i=1; i<predict.size(); i++) {
-            predict[i].velocity.y -= 0.98 * dt;
-            predict[i].position += predict[i].velocity * dt;
+        for (auto&& p : predict) {
+            if (p.weight == 0.0f)
+                continue;
+            const glm::vec3 gravity = {0.f, -0.98f, 0.f};
+            glm::vec3 force =
+                gravity / p.weight + // 重力
+                -0.1f * p.velocity +
+                glm::vec3{(std::rand() % 30) / 90.f, (std::rand() % 30) / 90.f, (std::rand() % 30) / 90.f}; // 空気抵抗
+
+            p.velocity += force * p.weight * dt;
+            p.position += p.velocity * dt;
         }
 
         for (int i=0; i<100; i++) {
