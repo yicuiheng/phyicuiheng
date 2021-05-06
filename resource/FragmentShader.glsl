@@ -24,7 +24,7 @@ void main()
     float LightPower = 50.0f;
 
     // Material properties
-    vec3 MaterialDiffuseColor = calcColor(Coord, 15.0);
+    vec3 MaterialDiffuseColor = calcColor(Coord, 5.0);
     vec3 MaterialAmbientColor = vec3(0.1, 0.1, 0.1) * MaterialDiffuseColor;
 
     float distance = length(LightPosition_worldspace - Position_worldspace);

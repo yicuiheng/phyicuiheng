@@ -1,8 +1,6 @@
 #include <numeric>
 #include "model.hpp"
 
-static constexpr int LENGTH = 30;
-
 model_t::model_t(
     std::vector<glm::vec3>&& vertices,
     std::vector<unsigned short>&& indices,
@@ -27,6 +25,8 @@ model_t::model_t(
     glGenBuffers(1, &m_index_buffer_id);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_index_buffer_id);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indices.size() * sizeof (unsigned short), m_indices.data(), GL_STATIC_DRAW);
+
+    glGenBuffers(1, &m_highlighted_vertex_index_buffer_id);
 }
 
 model_t::~model_t() {
@@ -35,6 +35,7 @@ model_t::~model_t() {
     glDeleteBuffers(1, &m_normal_buffer_id);
     glDeleteBuffers(1, &m_coord_buffer_id);
     glDeleteBuffers(1, &m_index_buffer_id);
+    glDeleteBuffers(1, &m_highlighted_vertex_index_buffer_id);
 }
 
 model_t model_t::make_cloth(rigid_body_t& rigid_body) {
@@ -53,8 +54,8 @@ model_t model_t::make_cloth(rigid_body_t& rigid_body) {
             rigid_body.mass_points.emplace_back(vertices[j * (LENGTH+1) + i]);
         }
     }
-    rigid_body.mass_points[(LENGTH+1) * LENGTH].weight = 0.0f;
-    rigid_body.mass_points[(LENGTH+1) * (LENGTH+1) - 1].weight = 0.0f;
+    rigid_body.mass_points[(LENGTH+1) * LENGTH + LENGTH/2].weight = 0.0f;
+    // rigid_body.mass_points[(LENGTH+1) * (LENGTH+1) - 1].weight = 0.0f;
 
     std::vector<unsigned short> indices;
     indices.reserve(2 * (LENGTH+1) * (LENGTH+1));
@@ -69,10 +70,12 @@ model_t model_t::make_cloth(rigid_body_t& rigid_body) {
                 indices.push_back(left_top);
                 indices.push_back(left_bottom);
                 indices.push_back(right_top);
+                rigid_body.triangles.emplace_back(left_top, left_bottom, right_top);
 
                 indices.push_back(right_bottom);
                 indices.push_back(right_top);
                 indices.push_back(left_bottom);
+                rigid_body.triangles.emplace_back(right_bottom, right_top, left_bottom);
             }
             if (i != LENGTH) {
                 // (i, j) - (i+1, j)
@@ -131,9 +134,9 @@ std::vector<glm::vec3> calc_normals(std::vector<glm::vec3> const& vertices) {
     return normals;
 }
 
-void model_t::draw() const {
-	glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
-	glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(glm::vec3), m_vertices.data(), GL_STATIC_DRAW);
+void model_t::draw() {
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
+    glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(glm::vec3), m_vertices.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
@@ -152,10 +155,25 @@ void model_t::draw() const {
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_index_buffer_id);
-
     glDrawElements(GL_TRIANGLES, m_indices.size(), GL_UNSIGNED_SHORT, nullptr);
 
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
     glDisableVertexAttribArray(2);
+}
+
+void model_t::debug_draw() {
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
+    glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(glm::vec3), m_vertices.data(), GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_highlighted_vertex_index_buffer_id);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_highlighted_vertex_indices.size() * sizeof (unsigned short), m_highlighted_vertex_indices.data(), GL_STATIC_DRAW);
+    glDrawElements(GL_POINTS, m_highlighted_vertex_indices.size(), GL_UNSIGNED_SHORT, nullptr);
+
+    glDisableVertexAttribArray(0);
+
+    // m_highlighted_vertex_indices.clear();
 }

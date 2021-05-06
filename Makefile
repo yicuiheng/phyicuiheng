@@ -4,9 +4,9 @@ CXXFLAGS = -Wall -Wextra -std=c++20 -pedantic -DGLEW_STATIC
 DEBUG_CXXFLAGS = -O0 -g3 -D_DEBUG -UNDEBUG
 RELEASE_CXXFLAGS = -O3 -s -flto -DNDEBUG -U_DEBUG
 
-LDFLAGS =
+LDFLAGS = `pkg-config --libs freetype2`
 LIBS = -lglfw -lGLEW -lGL -lX11 -lXi
-INCLUDE = -I./include
+INCLUDE = -I./include `pkg-config --cflags freetype2`
 
 SRCDIR = ./src
 SRC = $(wildcard $(SRCDIR)/*.cpp)

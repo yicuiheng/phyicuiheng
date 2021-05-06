@@ -7,12 +7,16 @@
 
 #include <rigid_body.hpp>
 
+static constexpr int LENGTH = 5;
+
 struct model_t {
     // 布のモデルを生成して、それの剛体モデルを rigid_body にアレする
     static model_t make_cloth(rigid_body_t& rigid_body);
     virtual ~model_t();
 
-    void draw() const;
+    void draw();
+    void debug_draw();
+    std::vector<unsigned short>& debug_indices() { return m_highlighted_vertex_indices; }
 private:
     explicit model_t() = delete;
     explicit model_t(
@@ -32,6 +36,9 @@ private:
 
     GLuint m_index_buffer_id;
     std::vector<unsigned short> m_indices;
+
+    GLuint m_highlighted_vertex_index_buffer_id;
+    std::vector<unsigned short> m_highlighted_vertex_indices; // for debug
 };
 
 #endif

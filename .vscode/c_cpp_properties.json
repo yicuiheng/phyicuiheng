@@ -1,0 +1,31 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${default}",
+                "${workspaceFolder}/include",
+                "/usr/include/freetype2"
+            ],
+            "defines": [
+                "GLEW_STATIC",
+                "_DEBUG"
+            ],
+            "compilerPath": "/usr/bin/g++",
+            "compilerArgs": [
+                "-Wall",
+                "-Wextra",
+                "-std=c++20",
+                "-pedantic",
+                "-O0",
+                "-g3",
+                "`pkg-config",
+                "--cflags",
+                "freetype2`"
+            ],
+            "intelliSenseMode": "linux-gcc-x64",
+            "cppStandard": "c++20"
+        }
+    ],
+    "version": 4
+}
