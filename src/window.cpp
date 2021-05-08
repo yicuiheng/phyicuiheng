@@ -56,11 +56,10 @@ window_t::window_t() {
     m_model_matrix_id = glGetUniformLocation(m_shader->id(), "M");
     m_light_id = glGetUniformLocation(m_shader->id(), "LightPosition_worldspace");
 
-    initText2D();
+    m_hoge_text = std::make_unique<TextTexture>("hoge fuga", 120, 120, 24);
 }
 
 window_t::~window_t() {
-    cleanupText2D();
     glDeleteProgram(m_shader->id());
     glfwTerminate();
 }
@@ -69,44 +68,9 @@ void window_t::update() {
     m_camera.update(m_window);
 }
 
-/*
-void render_text(const char *text, float x, float y, float sx, float sy) {
-  struct point {
-    GLfloat x;
-    GLfloat y;
-    GLfloat s;
-    GLfloat t;
-  } coords[6 * strlen(text)];
-
-  int n = 0;
-
-  for(const char *p = text; *p; p++) { 
-    float x2 =  x + c[*p].bl * sx;
-    float y2 = -y - c[*p].bt * sy;
-    float w = c[*p].bw * sx;
-    float h = c[*p].bh * sy;
-
-    x += c[*p].ax * sx;
-    y += c[*p].ay * sy;
-
-    if(!w || !h)
-      continue;
-
-    coords[n++] = (point){x2,     -y2    , c[*p].tx,                                            0};
-    coords[n++] = (point){x2 + w, -y2    , c[*p].tx + c[*p].bw / atlas_width,   0};
-    coords[n++] = (point){x2,     -y2 - h, c[*p].tx,                                          c[*p].bh / atlas_height}; //remember: each glyph occupies a different amount of vertical space
-    coords[n++] = (point){x2 + w, -y2    , c[*p].tx + c[*p].bw / atlas_width,   0};
-    coords[n++] = (point){x2,     -y2 - h, c[*p].tx,                                          c[*p].bh / atlas_height};
-    coords[n++] = (point){x2 + w, -y2 - h, c[*p].tx + c[*p].bw / atlas_width,                 c[*p].bh / atlas_height};
-  }
-
-  glBufferData(GL_ARRAY_BUFFER, sizeof coords, coords, GL_DYNAMIC_DRAW);
-  glDrawArrays(GL_TRIANGLES, 0, n);
-} */
-
 void window_t::draw(model_t& model) const {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-/*
+
     glUseProgram(m_shader->id());
 
     glm::mat4 projection_matrix = m_camera.projection();
@@ -129,10 +93,9 @@ void window_t::draw(model_t& model) const {
     glUniformMatrix4fv(m_view_matrix_id, 1, GL_FALSE, &view_matrix[0][0]);
     glUniform3f(m_light_id, lightPos.x, lightPos.y, lightPos.z);
     model.debug_draw();
-*/
-    static int x = 120;
-    x++;
-    printText2D("hogehoge", x, 120, 42);
+
+    m_hoge_text->draw();
+
     glfwSwapBuffers(m_window);
     glfwPollEvents();
 }

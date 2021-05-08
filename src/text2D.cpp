@@ -9,10 +9,6 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-using namespace glm;
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -46,75 +42,91 @@ std::string get_default_font_path() {
 
 struct char_info_t {
     int advance_x;
-    int advance_y;
-
-    int left;
-    int top;
     int width;
     int height;
+    int bearing_x;
+    int bearing_y;
 
     int texture_x;
     int texture_y;
-} char_infos[128];
+};
 
-int atlas_width = 0;
-int atlas_height = 0;
-
-static GLuint g_text_texture_id;
-static GLuint g_vertex_array_id;
-static GLuint g_text_vertex_buffer_id;
-static GLuint g_text_uv_buffer_id;
 static std::unique_ptr<shader_t> g_text_shader_id;
-static GLuint g_text_uniform_id;
+GLuint g_texture_sampler_id;
+static std::unique_ptr<FT_Library> g_library;
 
-static FT_Library g_library;
-static FT_Face g_face;
-
-void initText2D(){
-    auto error = FT_Init_FreeType(&g_library);
-    if (error) {
-        throw std::runtime_error{"failed to initialize freetype2"};
+struct FontData {
+    ~FontData() {
+        glDeleteTextures(1, &texture_id);
+        glDeleteProgram(g_text_shader_id->id());
     }
+    GLuint texture_id;
+    FT_Face face;
+    int atlas_width, atlas_height;
+    char_info_t char_infos[128];
+};
+
+static std::unique_ptr<FontData> g_default_font;
+
+void init_freetype2_library() {
+    assert(g_library == nullptr);
+
+    g_library = std::make_unique<FT_Library>();
+    auto error = FT_Init_FreeType(g_library.get());
+    if (error) {
+        throw std::runtime_error{"failed to initialize freetype2"};        
+    }
+}
+
+void init_default_font(int size) {
+    assert(g_text_shader_id == nullptr);
+    assert(g_default_font == nullptr);
+
+    // initialize shader
+	g_text_shader_id = std::make_unique<shader_t>(shader_t::load_from_files( "resource/TextVertexShader.vertexshader", "resource/TextVertexShader.fragmentshader" ));
+    g_texture_sampler_id = glGetUniformLocation( g_text_shader_id->id(), "myTextureSampler" );
+
+    // initialize font data
+    g_default_font = std::make_unique<FontData>();
+
     auto font_path = get_default_font_path();
-    error = FT_New_Face(g_library, font_path.c_str(), 0, &g_face);
+    auto error = FT_New_Face(*g_library, font_path.c_str(), 0, &g_default_font->face);
     if (error == FT_Err_Unknown_File_Format) {
         throw std::runtime_error{"freetype2 does not support default font format: " + font_path};
     } else if (error) {
         throw std::runtime_error{"failed to load font file"};
     }
-    std::cout << "load font: " << font_path << std::endl;
-    if (g_face->glyph->format == FT_GLYPH_FORMAT_BITMAP) {
-        std::cout << "  loaded font is bitmap font!" << std::endl;
-    }
-    FT_Set_Pixel_Sizes(g_face, 0, 48);
+    FT_Set_Pixel_Sizes(g_default_font->face, 0, size);
 
-    // calc texture width and height
+    // calc text texture size
     int w = 0;
     int h = 0;
     for (int i=32; i<128; i++) {
-        if (FT_Load_Char(g_face, i, FT_LOAD_RENDER)) {
+        if (FT_Load_Char(g_default_font->face, i, FT_LOAD_RENDER)) {
             fprintf(stderr, "Loading character %c failed!\n", i);
-            continue;
+            continue;            
         }
-        w += g_face->glyph->bitmap.width;
-        h = std::max(h, (int)g_face->glyph->bitmap.rows);
+        auto const& bitmap = g_default_font->face->glyph->bitmap;
+        w += bitmap.width;
+        h = std::max(h, (int)bitmap.rows);
     }
-    atlas_width = w;
-    atlas_height = h;
+    g_default_font->atlas_width = w;
+    g_default_font->atlas_height = h;
 
     // create empty texture with width and height
-    glGenTextures(1, &g_text_texture_id);
-    glBindTexture(GL_TEXTURE_2D, g_text_texture_id);
+    glGenTextures(1, &g_default_font->texture_id);
+    glBindTexture(GL_TEXTURE_2D, g_default_font->texture_id);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
+    // write font glyph bitmap to text texture
     int x = 0;
     for(int i = 32; i < 128; i++) {
-        if(FT_Load_Char(g_face, i, FT_LOAD_RENDER))
+        if(FT_Load_Char(g_default_font->face, i, FT_LOAD_RENDER))
             continue;
-        auto glyph = g_face->glyph;
+        auto glyph = g_default_font->face->glyph;
         int glyph_w = glyph->bitmap.width;
         int glyph_h = glyph->bitmap.rows;
         std::vector<GLubyte> buf(glyph_w * glyph_h * 4);
@@ -124,63 +136,55 @@ void initText2D(){
             buf[i*4 + 2] = glyph->bitmap.buffer[i];
             buf[i*4 + 3] = glyph->bitmap.buffer[i];
         }
-        glTextureSubImage2D(g_text_texture_id, 0, x, 0, glyph->bitmap.width, glyph->bitmap.rows, GL_RGBA, GL_UNSIGNED_BYTE, buf.data());
+        glTextureSubImage2D(g_default_font->texture_id, 0, x, 0, glyph->bitmap.width, glyph->bitmap.rows, GL_RGBA, GL_UNSIGNED_BYTE, buf.data());
 
-        char_infos[i].advance_x = glyph->advance.x >> 6;
-        char_infos[i].advance_y = glyph->advance.y >> 6;
-        char_infos[i].left = glyph->bitmap_left;
-        char_infos[i].top = glyph->bitmap_top;
-        char_infos[i].width = glyph->bitmap.width;
-        char_infos[i].height = glyph->bitmap.rows;
-        char_infos[i].texture_x = x;
-        char_infos[i].texture_y = 0;
+        g_default_font->char_infos[i].advance_x = glyph->advance.x >> 6;
+        g_default_font->char_infos[i].width = glyph->bitmap.width;
+        g_default_font->char_infos[i].height = glyph->bitmap.rows;
+        g_default_font->char_infos[i].bearing_x = glyph->metrics.horiBearingX >> 6;
+        g_default_font->char_infos[i].bearing_y = glyph->metrics.horiBearingY >> 6;
+        g_default_font->char_infos[i].texture_x = x;
+        g_default_font->char_infos[i].texture_y = 0;
 
         x += glyph->bitmap.width;
     }
-
-	GLuint fbo;
-    glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_text_texture_id, 0);
-    int data_size = atlas_width * atlas_height * 4;
-    GLubyte* pixels = new GLubyte[atlas_width * atlas_height * 4];
-    glReadPixels(0, 0, atlas_width, atlas_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glDeleteFramebuffers(1, &fbo);
-
-    stbi_write_bmp("fontdata.bmp", atlas_width, atlas_height, 4, pixels);
-    delete[] pixels;
-
-   glGenVertexArrays(1, &g_vertex_array_id);
-   glBindVertexArray(g_vertex_array_id);
-   glBindVertexArray(g_vertex_array_id);
-
-	// Initialize VBO
-	glGenBuffers(1, &g_text_vertex_buffer_id);
-	glGenBuffers(1, &g_text_uv_buffer_id);
-
-	// Initialize Shader
-	g_text_shader_id = std::make_unique<shader_t>(shader_t::load_from_files( "resource/TextVertexShader.vertexshader", "resource/TextVertexShader.fragmentshader" ));
-
-	// Initialize uniforms' IDs
-	g_text_uniform_id = glGetUniformLocation( g_text_shader_id->id(), "myTextureSampler" );
-
 }
 
-void printText2D(const char * text, int x, int y, int size){
+TextTexture::TextTexture(const char* text, int x, int y, int size) :
+    m_text{text}, m_x{x}, m_y{y}, m_size{size}
+{
+    if (g_library == nullptr)
+        init_freetype2_library();
+    if (g_default_font == nullptr)
+        init_default_font(size);
+    
+    glGenVertexArrays(1, &m_vertex_array_id);
+    glBindVertexArray(m_vertex_array_id);
 
-    unsigned int length = strlen(text);
+    // generate buffers for VBO
+    glGenBuffers(1, &m_vertex_buffer_id);
+    glGenBuffers(1, &m_uv_buffer_id);
 
     // Fill buffers
     std::vector<glm::vec2> vertices;
     std::vector<glm::vec2> UVs;
-    for ( unsigned int i=0 ; i<length ; i++ ){
+    for (int i=0; text[i] != '\0'; i++) {
         int c = text[i];
+        auto const& char_info = g_default_font->char_infos[c];
+        int left_x = x + char_info.bearing_x;
+        int right_x = left_x + char_info.width;
+        int up_y = y + char_info.bearing_y;
+        int down_y = up_y + char_info.height;
+        glm::vec2 vertex_up_left = glm::vec2(left_x, up_y);
+        glm::vec2 vertex_up_right = glm::vec2(right_x, up_y);
+        glm::vec2 vertex_down_right = glm::vec2(right_x, down_y);
+        glm::vec2 vertex_down_left = glm::vec2(left_x, down_y);
+        /*
         glm::vec2 vertex_up_left = glm::vec2(x, y);
-        glm::vec2 vertex_up_right = glm::vec2(x+size, y);
-        glm::vec2 vertex_down_right = glm::vec2(x+size, y+size);
-        glm::vec2 vertex_down_left = glm::vec2(x, y+size);
+        glm::vec2 vertex_up_right = glm::vec2(x+char_info.width, y);
+        glm::vec2 vertex_down_right = glm::vec2(x+char_info.width, y+char_info.height);
+        glm::vec2 vertex_down_left = glm::vec2(x, y+char_info.height);
+        */
 
         vertices.push_back(vertex_up_left);
         vertices.push_back(vertex_down_left);
@@ -190,12 +194,11 @@ void printText2D(const char * text, int x, int y, int size){
         vertices.push_back(vertex_up_right);
         vertices.push_back(vertex_down_left);
 
-        float uv_x = (float)char_infos[c].texture_x / atlas_width;
-        float uv_y = (float)(char_infos[c].texture_y + char_infos[c].height) / atlas_height;
-        float uv_width = (float)char_infos[c].width / atlas_width;
-        float uv_height = (float)(char_infos[c].texture_y + char_infos[c].height) / atlas_height;
+        float uv_x = (float)char_info.texture_x / g_default_font->atlas_width;
+        float uv_width = (float)char_info.width / g_default_font->atlas_width;
+        float uv_height = (float)(char_info.texture_y + char_info.height) / g_default_font->atlas_height;
 
-        x += size;
+        x += char_info.advance_x;
 
         glm::vec2 uv_up_left = glm::vec2(uv_x, uv_height);
         glm::vec2 uv_up_right = glm::vec2(uv_x+uv_width, uv_height);
@@ -210,48 +213,39 @@ void printText2D(const char * text, int x, int y, int size){
         UVs.push_back(uv_up_right);
         UVs.push_back(uv_down_left);
     }
-    glBindBuffer(GL_ARRAY_BUFFER, g_text_vertex_buffer_id);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec2), &vertices[0], GL_STATIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, g_text_uv_buffer_id);
-    glBufferData(GL_ARRAY_BUFFER, UVs.size() * sizeof(glm::vec2), &UVs[0], GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec2), vertices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, m_uv_buffer_id);
+    glBufferData(GL_ARRAY_BUFFER, UVs.size() * sizeof(glm::vec2), UVs.data(), GL_STATIC_DRAW);
 
-    // Bind shader
+}
+
+void TextTexture::draw() const {
     glUseProgram(g_text_shader_id->id());
 
-    // Bind texture
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, g_text_texture_id);
-    // Set our "myTextureSampler" sampler to use Texture Unit 0
-    glUniform1i(g_text_uniform_id, 0);
+    glBindTexture(GL_TEXTURE_2D, g_default_font->texture_id);
+    glUniform1i(g_texture_sampler_id, 0);
 
-    // 1rst attribute buffer : vertices
     glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, g_text_vertex_buffer_id);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0 );
 
-    // 2nd attribute buffer : UVs
     glEnableVertexAttribArray(1);
-    glBindBuffer(GL_ARRAY_BUFFER, g_text_uv_buffer_id);
+    glBindBuffer(GL_ARRAY_BUFFER, m_uv_buffer_id);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0 );
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    // Draw call
-    glDrawArrays(GL_TRIANGLES, 0, vertices.size()/2);
+    glDrawArrays(GL_TRIANGLES, 0, m_text.size()*6);
+    glDisable(GL_BLEND);
 
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
 }
 
-void cleanupText2D(){
-
-	// Delete buffers
-	glDeleteBuffers(1, &g_text_vertex_buffer_id);
-	glDeleteBuffers(1, &g_text_uv_buffer_id);
-
-	// Delete texture
-	glDeleteTextures(1, &g_text_texture_id);
-
-	// Delete shader
-	glDeleteProgram(g_text_shader_id->id());
+TextTexture::~TextTexture() {
+    glDeleteBuffers(1, &m_vertex_buffer_id);
+    glDeleteBuffers(1, &m_uv_buffer_id);
 }
+

@@ -3,6 +3,7 @@
 
 #include <memory>
 
+#include "text2D.hpp"
 #include "camera.hpp"
 #include "shader.hpp"
 
@@ -24,6 +25,7 @@ private:
     GLuint m_light_id;
     std::unique_ptr<shader_t> m_shader = nullptr;
     std::unique_ptr<shader_t> m_debug_shader = nullptr;
+    std::unique_ptr<TextTexture> m_hoge_text = nullptr;
     camera_t m_camera;
 };
 
